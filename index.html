@@ -1,0 +1,1282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gamma Re-Hedging Algo Workflow Charts v1 — CB Arbitrage Fund</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.0/mermaid.min.js"></script>
+  <style>
+    :root {
+      --primary: #1B3A5C;
+      --secondary: #2E75B6;
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --border: #E2E8F0;
+      --text: #334155;
+      --muted: #64748B;
+      --green: #2E7D32;
+      --green-light: #E8F5E9;
+      --green-border: #4CAF50;
+      --amber: #F57F17;
+      --amber-light: #FFF8E1;
+      --amber-border: #FF9800;
+      --red: #C62828;
+      --red-light: #FFEBEE;
+      --red-border: #F44336;
+      --grey: #6B7280;
+      --grey-light: #F3F4F6;
+      /* Team / Phase colours */
+      --qr-purple:  #6A1B9A;  --qr-bg:  #F3E5F5;   /* Quant Research */
+      --de-teal:    #00695C;  --de-bg:  #E0F2F1;   /* Data Engineering */
+      --qd-indigo:  #283593;  --qd-bg:  #E8EAF6;   /* Quant Dev */
+      --vr-brown:   #4E342E;  --vr-bg:  #EFEBE9;   /* Validation & Risk */
+      --lo-slate:   #37474F;  --lo-bg:  #ECEFF1;   /* Live Ops */
+      --pm-blue:    #1565C0;  --pm-bg:  #E3F2FD;   /* PM / IC */
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .header {
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: white;
+      padding: 2rem 2rem 1rem;
+      text-align: center;
+    }
+    .header h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .header p { opacity: 0.85; font-size: 0.95rem; }
+    .header .subtitle { font-size: 1.1rem; opacity: 0.9; margin-bottom: 0.5rem; }
+    .header .version-badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.4);
+      border-radius: 20px;
+      padding: 0.2rem 0.8rem;
+      font-size: 0.8rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .gar-bar {
+      display: flex;
+      justify-content: center;
+      gap: 0;
+      margin: 0.75rem auto 0.25rem;
+      max-width: 500px;
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .gar-bar .gar-seg { padding: 0.4rem 0.6rem; text-align: center; color: white; }
+    .gar-bar .gar-green { background: var(--green); flex: 47; }
+    .gar-bar .gar-amber { background: var(--amber); flex: 35; color: #1a1a1a; }
+    .gar-bar .gar-red   { background: var(--red);   flex: 18; }
+
+    .nav-container {
+      background: white;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .nav-tabs {
+      display: flex;
+      max-width: 1400px;
+      margin: 0 auto;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+    }
+    .nav-tab {
+      padding: 0.75rem 1.25rem;
+      cursor: pointer;
+      border: none;
+      background: none;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--muted);
+      white-space: nowrap;
+      border-bottom: 3px solid transparent;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+    .nav-tab:hover { color: var(--primary); background: #f1f5f9; }
+    .nav-tab.active { color: var(--primary); border-bottom-color: var(--secondary); font-weight: 600; }
+
+    .content { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+    .chart-section { display: none; }
+    .chart-section.active { display: block; }
+
+    .section-header {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .section-header h2 { font-size: 1.35rem; color: var(--primary); margin-bottom: 0.5rem; }
+    .section-header p { color: var(--muted); font-size: 0.9rem; }
+
+    .chart-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      overflow-x: auto;
+    }
+    .chart-card h3 {
+      font-size: 1.1rem;
+      color: var(--primary);
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid var(--border);
+    }
+
+    /* Legend */
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.25rem;
+      padding: 1rem 1.5rem;
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+      align-items: center;
+    }
+    .legend-title { font-weight: 600; font-size: 0.9rem; color: var(--primary); margin-right: 0.5rem; }
+    .legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text); font-weight: 500; }
+    .legend-color { width: 20px; height: 20px; border-radius: 4px; border: 2px solid; }
+    .legend-color.green  { background: var(--green-light);  border-color: var(--green-border); }
+    .legend-color.amber  { background: var(--amber-light);  border-color: var(--amber-border); }
+    .legend-color.red    { background: var(--red-light);    border-color: var(--red-border); }
+    .legend-color.diamond { background: var(--grey-light); border-color: var(--grey); transform: rotate(45deg); width: 16px; height: 16px; }
+
+    .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .info-box {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      border-left: 4px solid var(--secondary);
+    }
+    .info-box.green-stat  { border-left-color: var(--green); }
+    .info-box.amber-stat  { border-left-color: var(--amber); }
+    .info-box.red-stat    { border-left-color: var(--red); }
+    .info-box h4 { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .info-box .value  { font-size: 1.4rem; font-weight: 700; color: var(--primary); }
+    .info-box .detail { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
+
+    .mermaid { text-align: center; }
+    .mermaid svg { max-width: 100%; height: auto; }
+
+    .footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+      border-top: 1px solid var(--border);
+      margin-top: 2rem;
+    }
+
+    /* Team badges */
+    .team-badge {
+      display: inline-block;
+      padding: 0.15rem 0.6rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-left: 0.5rem;
+      vertical-align: middle;
+    }
+    .team-badge.qr { background: var(--qr-bg); color: var(--qr-purple); }
+    .team-badge.de { background: var(--de-bg); color: var(--de-teal); }
+    .team-badge.qd { background: var(--qd-bg); color: var(--qd-indigo); }
+    .team-badge.vr { background: var(--vr-bg); color: var(--vr-brown); }
+    .team-badge.lo { background: var(--lo-bg); color: var(--lo-slate); }
+    .team-badge.pm { background: var(--pm-bg); color: var(--pm-blue); }
+
+    /* Summary table */
+    .summary-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 1rem; }
+    .summary-table th { background: var(--primary); color: white; padding: 0.6rem 0.8rem; text-align: left; font-weight: 600; }
+    .summary-table td { padding: 0.5rem 0.8rem; border-bottom: 1px solid var(--border); }
+    .summary-table tr:nth-child(even) { background: #F5F7FA; }
+    .summary-table .llm-green { color: var(--green); font-weight: 600; }
+    .summary-table .llm-amber { color: #E65100; font-weight: 600; }
+    .summary-table .llm-red   { color: var(--red); font-weight: 600; }
+
+    .phase-divider {
+      background: var(--primary);
+      color: white;
+      padding: 0.4rem 0.8rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+
+    @media print {
+      .nav-container { display: none; }
+      .chart-section { display: block !important; page-break-before: always; }
+      .header { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
+    @media (max-width: 768px) {
+      .header h1 { font-size: 1.3rem; }
+      .nav-tab { padding: 0.6rem 0.9rem; font-size: 0.8rem; }
+      .content { padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="version-badge">v1.0 — Aligned with Gamma Re-Hedging Workflow Build Guide v1</div>
+  <h1>Gamma Re-Hedging Algo Strategy — Workflow Charts</h1>
+  <div class="subtitle">74 Steps &middot; 6 Phases &middot; 6 Teams &middot; 10 Decision Gates &middot; 5 Feedback Loops</div>
+  <div class="gar-bar">
+    <div class="gar-seg gar-green">Autonomous 47%</div>
+    <div class="gar-seg gar-amber">Assisted 35%</div>
+    <div class="gar-seg gar-red">Manual 18%</div>
+  </div>
+  <p style="margin-top:0.4rem;">Green = Autonomous (35 steps) &bull; Amber = Assisted (26 steps) &bull; Red = Manual (13 steps) &bull; February 2026</p>
+</div>
+
+<div class="nav-container">
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showTab('overall', event)">Master Workflow</button>
+    <button class="nav-tab" onclick="showTab('quant-research', event)">Quant Research</button>
+    <button class="nav-tab" onclick="showTab('data-eng', event)">Data Engineering</button>
+    <button class="nav-tab" onclick="showTab('quant-dev', event)">Quant Dev</button>
+    <button class="nav-tab" onclick="showTab('validation', event)">Validation &amp; Risk</button>
+    <button class="nav-tab" onclick="showTab('live-ops', event)">Live Ops</button>
+    <button class="nav-tab" onclick="showTab('summary', event)">Capability Summary</button>
+  </div>
+</div>
+
+<div class="content">
+
+<!-- ==================== MASTER WORKFLOW ==================== -->
+<div class="chart-section active" id="overall">
+  <div class="section-header">
+    <h2>Master Build Sequence — LLM Capability Overlay</h2>
+    <p>Each phase is colour-coded by predominant LLM capability level. Phases 1 and 2 run in parallel (foundation). Phases 3–5 are sequential with hard pass/fail gates and mandatory loop-backs. Phase 6 is operational with a continuous governance loop. Diamonds represent decision gates requiring quantitative sign-off or human judgment. IC/Risk Committee gate (end of Phase 5) cannot be bypassed algorithmically. 74 steps across 6 phases, 10 gates, 5 feedback loops.</p>
+  </div>
+
+  <div class="legend">
+    <span class="legend-title">Legend:</span>
+    <div class="legend-item"><div class="legend-color green"></div>Autonomous (LLM end-to-end)</div>
+    <div class="legend-item"><div class="legend-color amber"></div>Assisted (LLM + human review)</div>
+    <div class="legend-item"><div class="legend-color red"></div>Manual (human required)</div>
+    <div class="legend-item"><div class="legend-color diamond"></div>Gate / Checkpoint</div>
+  </div>
+
+  <div class="info-grid">
+    <div class="info-box green-stat">
+      <h4>Autonomous</h4>
+      <div class="value">35 steps (47%)</div>
+      <div class="detail">Data ingestion, Greeks validation, BVAL benchmark, parameter sweeps, bootstrap filters, all Monte Carlo path generation, CVaR computation, kill-switch monitoring, slippage ratio</div>
+    </div>
+    <div class="info-box amber-stat">
+      <h4>Assisted</h4>
+      <div class="value">26 steps (35%)</div>
+      <div class="detail">Trigger logic specification, break-even model derivation, vectorised engine build, event-driven engine build, regime detector design, shadow OMS setup, paper trading oversight, IC package compilation, phased rollout monitoring, all ongoing governance reviews</div>
+    </div>
+    <div class="info-box red-stat">
+      <h4>Manual</h4>
+      <div class="value">13 steps (18%)</div>
+      <div class="detail">Model architecture selection, lead quant sign-offs, vendor procurement, engine architecture decision, root-cause analysis on gate failure, final parameter selection, IC/Risk Committee sign-off, Days 1–2 PM signal review, kill-switch event restart, quarterly threshold review, annual audit</div>
+    </div>
+    <div class="info-box">
+      <h4>Feedback Loops</h4>
+      <div class="value">5 mandatory</div>
+      <div class="detail">Phase 3 fail → Phase 1 (model revision); Phase 4 fail → Phase 3 (parameter revision); Phase 5 OOS fail → Phase 4; Phase 5 MC fail → Phase 1; Phase 5 slippage fail → Phase 1 friction model; IC rejection → Phase 4</div>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Master Build Sequence with LLM Capability Assessment</h3>
+    <div class="mermaid">
+graph TD
+    START(["Strategy Brief Received<br/>Instrument Universe Defined"]):::greenNode
+
+    subgraph FOUNDATION ["FOUNDATION PHASES (Parallel — Weeks 1-3)"]
+        direction LR
+        P1["Phase 1: Research &amp; Model Development<br/><b>3 Auto / 7 Asst / 2 Manual</b><br/>Quant Research — Weeks 1-3"]:::amberNode
+        P2["Phase 2: Data Pipeline Construction<br/><b>8 Auto / 3 Asst / 2 Manual</b><br/>Data Engineering — Weeks 2-3"]:::greenNode
+    end
+
+    START --> P1
+    START --> P2
+    P1 --> G12{"Gate: Phase 1 spec<br/>signed off? Phase 2<br/>pipeline validated?"}:::decisionNode
+    P2 --> G12
+
+    subgraph SEQ ["SEQUENTIAL BUILD &amp; VALIDATION PHASES (Weeks 3-11)"]
+        direction TB
+        P3["Phase 3: Backtesting Engine &amp; Historical Simulation<br/><b>5 Auto / 4 Asst / 3 Manual</b><br/>Quant Dev — Weeks 3-5"]:::amberNode
+        P3 --> G3{"Gate 3: Net Sharpe ≥ 1.0?<br/>MDD ≤ 15%? Gamma P&amp;L<br/>positive 3/4 regimes?<br/>Live audit within 5 bp?"}:::decisionNode
+        G3 -->|Pass| P4["Phase 4: Optimisation &amp; Overfitting Prevention<br/><b>7 Auto / 2 Asst / 1 Manual</b><br/>Quant Research — Weeks 5-7"]:::greenNode
+        P4 --> G4{"Gate 4: OOS degradation<br/>&lt; 30%? Bootstrap &gt; 90%<br/>profitable? Params in<br/>flat sensitivity region?"}:::decisionNode
+        G4 -->|Pass| P5["Phase 5: Validation, Stress Testing &amp; Paper Trading<br/><b>10 Auto / 3 Asst / 1 Manual</b><br/>Multi-Team — Weeks 7-11"]:::greenNode
+        P5 --> G5{"Gates: OOS Sharpe ≥ 0.8x?<br/>All MC CVaR &lt; 3% NAV?<br/>Slippage ≤ 1.3x modelled?<br/>No kill-switch breaches?"}:::decisionNode
+        G5 -->|All Pass| IC{"IC / RISK COMMITTEE<br/>FORMAL WRITTEN SIGN-OFF<br/>[MANDATORY HUMAN GATE —<br/>CANNOT BE BYPASSED]"}:::decisionNode
+    end
+
+    G12 -->|Both Complete| P3
+
+    G3 -->|Fail| LOOP3(["LOOP BACK to Phase 1<br/>Written root-cause analysis<br/>required before any changes"]):::redNode
+    G4 -->|Fail| LOOP4(["LOOP BACK to Phase 3<br/>Revise / reduce<br/>parameter search space"]):::redNode
+    G5 -->|Any Fail| LOOP5(["LOOP BACK to Phase 4<br/>or Phase 1 depending<br/>on root cause"]):::redNode
+
+    IC -->|Approved| P6["Phase 6: Live Deployment &amp; Ongoing Governance<br/><b>2 Auto / 7 Asst / 4 Manual</b><br/>Multi-Team — Weeks 11+"]:::redNode
+    IC -->|Not Approved| LOOPIC(["Address Committee<br/>Feedback — Return to<br/>Phase 4 or Phase 5"]):::redNode
+    P6 --> G6{"Gate 6: Phased rollout<br/>complete? Kill-switches<br/>live? Monitoring active?"}:::decisionNode
+    G6 -->|Live| DONE(["STRATEGY LIVE<br/>Continuous Monitoring<br/>Ongoing Governance Loop"]):::greenNode
+
+    classDef greenNode fill:#E8F5E9,stroke:#4CAF50,color:#1B5E20,stroke-width:2px
+    classDef amberNode fill:#FFF8E1,stroke:#FF9800,color:#E65100,stroke-width:2px
+    classDef redNode fill:#FFEBEE,stroke:#F44336,color:#B71C1C,stroke-width:2px
+    classDef decisionNode fill:#F3F4F6,stroke:#6B7280,color:#374151,stroke-width:2px
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Phase 1 + 2 Parallel Dependency Detail (Foundation — Weeks 1-3)</h3>
+    <div class="mermaid">
+graph TB
+    subgraph FOUND ["Foundation Phase — Sequential Prerequisites Before Phase 3 Can Begin"]
+        direction TB
+
+        subgraph P1S ["Phase 1: Research &amp; Model Dev — Quant Research"]
+            direction TB
+            P1A["Model Architecture<br/>Selection"]:::redNode
+            P1B["Greeks Engine<br/>Specification"]:::amberNode
+            P1C["Trigger Logic<br/>Specification<br/>(3 trigger types)"]:::amberNode
+            P1D["Break-even Model<br/>Derivation &amp; Validation"]:::amberNode
+            P1A --> P1B --> P1C --> P1D
+        end
+
+        subgraph P2S ["Phase 2: Data Pipeline — Data Engineering"]
+            direction TB
+            P2A["Vendor Contracts<br/>&amp; PB Agreements"]:::redNode
+            P2B["Ingest All 6<br/>Data Sources"]:::greenNode
+            P2C["Build DataQuality<br/>Report Engine"]:::greenNode
+            P2D["Build Serving Layer<br/>(Batch + Streaming)"]:::amberNode
+            P2A --> P2B --> P2C --> P2D
+        end
+
+        G12OUT(["GATE: Both Phase 1 spec<br/>AND Phase 2 pipeline<br/>validated before Phase 3 starts"]):::decisionNode
+
+        P1D --> G12OUT
+        P2D --> G12OUT
+        G12OUT -->|Both Ready| NEXT(["Proceed to Phase 3<br/>Backtesting Engine"]):::greenNode
+    end
+
+    classDef greenNode fill:#E8F5E9,stroke:#4CAF50,color:#1B5E20,stroke-width:2px
+    classDef amberNode fill:#FFF8E1,stroke:#FF9800,color:#E65100,stroke-width:2px
+    classDef redNode fill:#FFEBEE,stroke:#F44336,color:#B71C1C,stroke-width:2px
+    classDef decisionNode fill:#F3F4F6,stroke:#6B7280,color:#374151,stroke-width:2px
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Phase 3 + 4 Gate and Loop-Back Logic (Weeks 3-7)</h3>
+    <div class="mermaid">
+graph TB
+    subgraph BT ["Phase 3: Backtesting Engine &amp; Phase 4: Optimisation — Gate Logic"]
+        direction TB
+
+        IN["Phases 1 &amp; 2 Complete<br/>All Prerequisites Ready"]:::greenNode
+
+        subgraph P3G ["Phase 3 Decision Gate"]
+            direction TB
+            G3A{"Net Sharpe (net of all costs) ≥ 1.0?"}:::decisionNode
+            G3B{"Maximum drawdown ≤ 15% NAV?"}:::decisionNode
+            G3C{"Gamma P&amp;L positive in ≥ 3 of 4<br/>required regime periods?"}:::decisionNode
+            G3D{"Live book audit within 5 bp<br/>on 2022-2023 sample?"}:::decisionNode
+            G3A --> G3B --> G3C --> G3D
+        end
+
+        subgraph P4G ["Phase 4 Decision Gate"]
+            direction TB
+            G4A{"Bootstrap: &gt; 90% of 500<br/>resamples net-profitable?"}:::decisionNode
+            G4B{"Walk-forward Sharpe CV &lt; 30%<br/>across all test windows?"}:::decisionNode
+            G4C{"OOS Sharpe degradation &lt; 30%<br/>vs in-sample?"}:::decisionNode
+            G4D{"Parameters in flat sensitivity<br/>region (not at sharp peak)?"}:::decisionNode
+            G4A --> G4B --> G4C --> G4D
+        end
+
+        FAIL3(["GATE FAIL — Phase 3<br/>Written root-cause required<br/>Return to Phase 1"]):::redNode
+        FAIL4(["GATE FAIL — Phase 4<br/>Revise parameter space<br/>Return to Phase 3"]):::redNode
+        PASS4(["All Phase 4 Gates Pass<br/>Proceed to Phase 5"]):::greenNode
+
+        IN --> G3A
+        G3D -->|All Pass| G4A
+        G3D -->|Any Fail| FAIL3
+        G4D -->|All Pass| PASS4
+        G4D -->|Any Fail| FAIL4
+    end
+
+    classDef greenNode fill:#E8F5E9,stroke:#4CAF50,color:#1B5E20,stroke-width:2px
+    classDef amberNode fill:#FFF8E1,stroke:#FF9800,color:#E65100,stroke-width:2px
+    classDef redNode fill:#FFEBEE,stroke:#F44336,color:#B71C1C,stroke-width:2px
+    classDef decisionNode fill:#F3F4F6,stroke:#6B7280,color:#374151,stroke-width:2px
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Phase 5 Validation Layers + IC Gate (Weeks 7-11)</h3>
+    <div class="mermaid">
+graph TB
+    subgraph P5M ["Phase 5: Three-Layer Validation + IC Gate"]
+        direction TB
+
+        IN["Phase 4 Optimised Parameter<br/>Set Finalised"]:::greenNode
+
+        subgraph L1 ["Layer 1: Out-of-Sample Backtest"]
+            OOS["Run event-driven engine<br/>on 24M held-out period<br/>(no parameter adjustment permitted)"]:::greenNode
+            G_OOS{"OOS Sharpe ≥ 0.8x<br/>in-sample Sharpe?<br/>OOS degradation &lt; 20%?"}:::decisionNode
+            OOS --> G_OOS
+        end
+
+        subgraph L2 ["Layer 2: Monte Carlo Stress Test (4 Models)"]
+            MC1["GBM Baseline<br/>1,000 paths"]:::greenNode
+            MC2["Merton Jump-Diffusion<br/>1,000 paths<br/>(λ=2/yr, μJ=-8%, σJ=12%)"]:::greenNode
+            MC3["Heston Stochastic Vol<br/>1,000 paths<br/>(κ=1.5, θ=0.04, ξ=0.3)"]:::greenNode
+            MC4["Credit Event Paths<br/>500 paths<br/>(CDS +500bp, CB -15-25%)"]:::greenNode
+            G_MC{"All 4 models:<br/>CVaR at 5th pct &lt; 3% NAV?<br/>Kill-switch breach rate &lt; 15%?"}:::decisionNode
+            MC1 --> G_MC
+            MC2 --> G_MC
+            MC3 --> G_MC
+            MC4 --> G_MC
+        end
+
+        subgraph L3 ["Layer 3: Paper Trading (90 Days Minimum)"]
+            PT["90-day shadow OMS<br/>paper trading<br/>real-time market data required"]:::amberNode
+            G_PT{"No kill-switch breaches?<br/>Slippage ≤ 1.3x modelled<br/>over full 90 days?"}:::decisionNode
+            PT --> G_PT
+        end
+
+        IC{"IC / RISK COMMITTEE<br/>FORMAL WRITTEN SIGN-OFF<br/>Quorate committee meeting<br/>required — not email approval"}:::decisionNode
+
+        FAIL_OOS(["FAIL: Return to Phase 4<br/>Parameter revision required"]):::redNode
+        FAIL_MC(["FAIL: Return to Phase 1<br/>Model / friction revision"]):::redNode
+        FAIL_PT(["FAIL: Root-cause analysis<br/>Return to Phase 4"]):::redNode
+        APPROVED(["IC APPROVED<br/>Proceed to Phase 6"]):::greenNode
+
+        IN --> OOS
+        IN --> MC1
+        IN --> MC2
+        IN --> MC3
+        IN --> MC4
+        IN --> PT
+
+        G_OOS -->|Fail| FAIL_OOS
+        G_MC -->|Fail| FAIL_MC
+        G_PT -->|Fail| FAIL_PT
+
+        G_OOS -->|Pass| IC
+        G_MC -->|Pass| IC
+        G_PT -->|Pass| IC
+
+        IC -->|Approved| APPROVED
+    end
+
+    classDef greenNode fill:#E8F5E9,stroke:#4CAF50,color:#1B5E20,stroke-width:2px
+    classDef amberNode fill:#FFF8E1,stroke:#FF9800,color:#E65100,stroke-width:2px
+    classDef redNode fill:#FFEBEE,stroke:#F44336,color:#B71C1C,stroke-width:2px
+    classDef decisionNode fill:#F3F4F6,stroke:#6B7280,color:#374151,stroke-width:2px
+    </div>
+  </div>
+</div><!-- end overall -->
+
+
+<!-- ==================== QUANT RESEARCH (Phases 1 & 4) ==================== -->
+<div class="chart-section" id="quant-research">
+  <div class="section-header">
+    <h2>Quantitative Research <span class="team-badge qr">Phase 1</span> <span class="team-badge qr">Phase 4</span></h2>
+    <p>Primary modelling team owning 22 steps directly across Phase 1 (model specification) and Phase 4 (optimisation). Phase 1 is predominantly Assisted — LLM can generate and validate specifications but model architecture selection and final sign-off require human judgment. Phase 4 is the most Autonomous build phase: all sweep, bootstrap, walk-forward, CVaR, and heatmap generation steps are fully end-to-end automatable. Regime detector build is Assisted. Final parameter selection requires PM and lead quant joint review.</p>
+  </div>
+
+  <div class="legend">
+    <span class="legend-title">Legend:</span>
+    <div class="legend-item"><div class="legend-color green"></div>Autonomous</div>
+    <div class="legend-item"><div class="legend-color amber"></div>Assisted</div>
+    <div class="legend-item"><div class="legend-color red"></div>Manual</div>
+    <div class="legend-item"><div class="legend-color diamond"></div>Gate</div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Phase 1: Research &amp; Mathematical Model Development (12 steps — 3 Auto / 7 Asst / 2 Manual)</h3>
+    <div class="mermaid">
+graph TB
+    subgraph P1 ["Phase 1: Research &amp; Mathematical Model Development — Quant Research — Weeks 1-3"]
+        direction TB
+
+        S11["Step 1.1<br/>Assemble all analytical inputs<br/>(vol surface, CDS curve, borrow<br/>rates, dividend calendar, term sheets)"]:::greenNode
+        S12["Step 1.2<br/>Select pricing model architecture<br/>(Binomial tree / Finite diff PDE /<br/>Monte Carlo) — document rationale"]:::redNode
+        D12{"Architecture sign-off<br/>by lead quant<br/>and PM?"}:::decisionNode
+        S13["Step 1.3<br/>Derive full Greeks engine specification<br/>(delta, gamma, vega, theta, charm, rho)<br/>— full algebraic derivation required"]:::amberNode
+        S14["Step 1.4<br/>Greeks self-consistency validation<br/>(put-call parity within 0.1%; delta in [0,1];<br/>gamma &gt; 0; theta &lt; 0 for long option)"]:::greenNode
+        S15["Step 1.5<br/>BVAL benchmark validation<br/>(50 bonds, 3 credit quality tiers;<br/>pricing error &lt; 0.05% required)"]:::greenNode
+        S16["Step 1.6<br/>Specify delta-band trigger logic<br/>(band: 1.5-8.0%; regime multiplier:<br/>1.0-2.5x for vol regime widening)"]:::amberNode
+        S17["Step 1.7<br/>Specify gamma P&amp;L trigger logic<br/>(carry-relative threshold: 0.08-0.35%;<br/>set relative to daily theta drag)"]:::amberNode
+        S18["Step 1.8<br/>Specify time-based trigger<br/>and hybrid combination rules<br/>(interval: 5-120 min; cooldown logic)"]:::amberNode
+        S19["Step 1.9<br/>Derive carry break-even model<br/>(BE vol = sqrt(2 x theta / gamma x S²);<br/>itemised by all friction components)"]:::amberNode
+        S110["Step 1.10<br/>Validate break-even formula<br/>vs 3 live book re-hedge sequences<br/>(within 1 vol point required)"]:::amberNode
+        S111["Step 1.11<br/>Document instrument reusability mapping<br/>(CB / warrant / equity option /<br/>variance swap — per component)"]:::amberNode
+        S112["Step 1.12<br/>Lead quant sign-off on<br/>complete Phase 1 specification<br/>package — written approval"]:::redNode
+
+        S11 --> S12
+        S12 --> D12
+        D12 -->|Approved| S13
+        S13 --> S14
+        S13 --> S15
+        S14 --> S16
+        S15 --> S16
+        S16 --> S17
+        S17 --> S18
+        S18 --> S19
+        S19 --> S110
+        S110 --> S111
+        S111 --> S112
+        S112 --> OUT1(["Output: Greeks Engine Spec<br/>Trigger Logic (3 types)<br/>Break-even Model<br/>Reusability Map"]):::amberNode
+    end
+
+    classDef greenNode fill:#E8F5E9,stroke:#4CAF50,color:#1B5E20,stroke-width:2px
+    classDef amberNode fill:#FFF8E1,stroke:#FF9800,color:#E65100,stroke-width:2px
+    classDef redNode fill:#FFEBEE,stroke:#F44336,color:#B71C1C,stroke-width:2px
+    classDef decisionNode fill:#F3F4F6,stroke:#6B7280,color:#374151,stroke-width:2px
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Phase 4: Optimisation &amp; Overfitting Prevention (10 steps — 7 Auto / 2 Asst / 1 Manual)</h3>
+    <div class="mermaid">
+graph TB
+    subgraph P4 ["Phase 4: Optimisation &amp; Overfitting Prevention — Quant Research — Weeks 5-7"]
+        direction TB
+
+        DEP["Phase 3 Backtesting Engine<br/>All gates passed"]:::amberNode
+
+        S41["Step 4.1<br/>Define hyperparameter search space<br/>(7 params: delta_band, gamma_threshold,<br/>time_interval, vol_multiplier, etc.)"]:::amberNode
+        S42["Step 4.2<br/>Run full vectorised parameter sweep<br/>across all 7 dimensions<br/>(Phase 3 engine)"]:::greenNode
+        S43["Step 4.3<br/>Bootstrap filter<br/>(&gt;90% of 500 resamples net-profitable;<br/>reject all sets below threshold)"]:::greenNode
+        S44["Step 4.4<br/>Walk-forward validation<br/>(8+ windows; 12M train / 6M test;<br/>no parameter leakage permitted)"]:::greenNode
+        S45["Step 4.5<br/>Compute Sharpe CV<br/>across all test windows<br/>(CV &lt; 30% required)"]:::greenNode
+        S46["Step 4.6<br/>Compute OOS Sharpe degradation<br/>vs in-sample average<br/>(&lt; 30% degradation required)"]:::greenNode
+        S47["Step 4.7<br/>Generate sensitivity heatmaps<br/>(2D: delta_band vs gamma_threshold;<br/>confirm flat region evidence)"]:::greenNode
+        S48["Step 4.8<br/>Build &amp; validate regime detection module<br/>(vol / trend / borrow / credit;<br/>4 dimensions, each 3-state)"]:::amberNode
+        S49["Step 4.9<br/>Validate regime classifier accuracy<br/>(≥ 80% daily accuracy on all<br/>4 mandatory historical periods)"]:::greenNode
+        D49{"Classifier accuracy<br/>≥ 80% on all<br/>4 periods?"}:::decisionNode
+        S410["Step 4.10<br/>PM + lead quant joint review<br/>of final parameter set<br/>(sensitivity heatmap evidence required)"]:::redNode
+
+        DEP --> S41
+        S41 --> S42
+        S42 --> S43
+        S43 --> S44
+        S44 --> S45
+        S45 --> S46
+        S46 --> S47
+        S47 --> S48
+        S48 --> S49
+        S49 --> D49
+        D49 -->|Pass| S410
+        D49 -->|Fail| RETRAIN(["Retrain regime classifier<br/>Expand training window<br/>Revise feature set"]):::redNode
+        S410 --> OUT4(["Output: Accepted Parameter Set<br/>Walk-forward Stability Report<br/>Sensitivity Heatmaps<br/>Regime Classifier Module"]):::greenNode
+    end
+
+    classDef greenNode fill:#E8F5E9,stroke:#4CAF50,color:#1B5E20,stroke-width:2px
+    classDef amberNode fill:#FFF8E1,stroke:#FF9800,color:#E65100,stroke-width:2px
+    classDef redNode fill:#FFEBEE,stroke:#F44336,color:#B71C1C,stroke-width:2px
+    classDef decisionNode fill:#F3F4F6,stroke:#6B7280,color:#374151,stroke-width:2px
+    </div>
+  </div>
+</div><!-- end quant-research -->
+
+
+<!-- ==================== DATA ENGINEERING (Phase 2) ==================== -->
+<div class="chart-section" id="data-eng">
+  <div class="section-header">
+    <h2>Data Engineering <span class="team-badge de">Phase 2</span></h2>
+    <p>Standalone phase running in parallel with Phase 1 (Weeks 2-3). All 8 data source ingestion steps are Autonomous — once vendor contracts are in place, LLM agents can build, validate and monitor each pipeline end-to-end. Staleness and gap detection logic and the unified serving layer are Assisted (architecture decisions required). Two Manual steps: vendor and prime broker contract procurement (relationship management required) and final data engineering sign-off. Zero tolerance on missing borrow rate data is a hard constraint and must be enforced programmatically with no exceptions permitted.</p>
+  </div>
+
+  <div class="legend">
+    <span class="legend-title">Legend:</span>
+    <div class="legend-item"><div class="legend-color green"></div>Autonomous</div>
+    <div class="legend-item"><div class="legend-color amber"></div>Assisted</div>
+    <div class="legend-item"><div class="legend-color red"></div>Manual</div>
+    <div class="legend-item"><div class="legend-color diamond"></div>Gate</div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Phase 2: Data Pipeline Construction (13 steps — 8 Auto / 3 Asst / 2 Manual)</h3>
+    <div class="mermaid">
+graph TB
+    subgraph P2 ["Phase 2: Data Pipeline Construction — Data Engineering — Weeks 2-3"]
+        direction TB
+
+        S21["Step 2.1<br/>Procure vendor contracts<br/>&amp; prime broker data agreements<br/>(Bloomberg, exchange, PB SFT)"]:::redNode
+
+        subgraph INGEST ["Ingestion Layer — 6 Sources (All Autonomous once contracts in place)"]
+            direction LR
+            S22["Step 2.2<br/>Equity tick<br/>data ingestion<br/>(FIX / exchange feed;<br/>gap &gt;15 min halts signals)"]:::greenNode
+            S23["Step 2.3<br/>CB marks ingestion<br/>(BVAL + PB;<br/>discrepancy &gt;1pt<br/>→ manual review)"]:::greenNode
+            S24["Step 2.4<br/>Implied vol surface<br/>ingestion<br/>(5 expiries x 7 strikes;<br/>SVI interpolation)"]:::greenNode
+            S25["Step 2.5<br/>Borrow rate<br/>ingestion<br/>(PB SFT term structure;<br/>ZERO TOLERANCE<br/>for missing data)"]:::greenNode
+            S26["Step 2.6<br/>Dividend &amp;<br/>corporate action<br/>ingestion<br/>(real-time event stream)"]:::greenNode
+            S27["Step 2.7<br/>CDS spread<br/>ingestion<br/>(1Y / 3Y / 5Y<br/>per issuer daily)"]:::greenNode
+        end
+
+        S28["Step 2.8<br/>Implement staleness &amp; gap<br/>detection logic<br/>(CB unchanged &gt;2hrs → flag;<br/>vol &lt;3 expiries → reject day)"]:::amberNode
+        S29["Step 2.9<br/>Build DataQualityReport<br/>generation (daily)<br/>(missing_borrow_pct, stale_cb_marks,<br/>vol_completeness, is_tradeable)"]:::greenNode
+        S210["Step 2.10<br/>Build unified serving layer<br/>(batch API for backtest;<br/>streaming API for live engine)"]:::amberNode
+        S211["Step 2.11<br/>Run historical completeness audit<br/>(4 years continuous; max 5-day<br/>gap per source)"]:::greenNode
+        D211{"All sources: 4yr coverage?<br/>All quality gates pass?<br/>No zero-tolerance breaches?"}:::decisionNode
+        S212["Step 2.12<br/>Integration test:<br/>serve data snapshot<br/>to Phase 3 backtest engine"]:::amberNode
+        S213["Step 2.13<br/>Data engineering<br/>lead sign-off<br/>on complete pipeline"]:::redNode
+
+        S21 --> S22
+        S21 --> S23
+        S21 --> S24
+        S21 --> S25
+        S21 --> S26
+        S21 --> S27
+        S22 --> S28
+        S23 --> S28
+        S24 --> S28
+        S25 --> S28
+        S26 --> S28
+        S27 --> S28
+        S28 --> S29
+        S29 --> S210
+        S210 --> S211
+        S211 --> D211
+        D211 -->|All Pass| S212
+        D211 -->|Any Fail| REMEDIATE(["Identify failing source<br/>Escalate to vendor / PB<br/>Remediate and retest"]):::redNode
+        S212 --> S213
+        S213 --> OUT2(["Output: Unified Data Pipeline<br/>DataQualityReport System<br/>Batch + Streaming Serving Layer<br/>4yr Historical Archive"]):::greenNode
+    end
+
+    classDef greenNode fill:#E8F5E9,stroke:#4CAF50,color:#1B5E20,stroke-width:2px
+    classDef amberNode fill:#FFF8E1,stroke:#FF9800,color:#E65100,stroke-width:2px
+    classDef redNode fill:#FFEBEE,stroke:#F44336,color:#B71C1C,stroke-width:2px
+    classDef decisionNode fill:#F3F4F6,stroke:#6B7280,color:#374151,stroke-width:2px
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Data Quality Gate Logic — Per Source Thresholds</h3>
+    <div class="mermaid">
+graph LR
+    subgraph DQ ["Data Quality Gate — Applied Daily Before Signal Generation"]
+        direction TB
+
+        DQR["Daily DataQualityReport<br/>Generated Automatically"]:::greenNode
+
+        B1{"Borrow rate<br/>missing for<br/>any position?"}:::decisionNode
+        B2{"CB mark unchanged<br/>&gt; 2 consecutive<br/>hours intraday?"}:::decisionNode
+        B3{"Vol surface:<br/>&lt; 3 expiries<br/>populated?"}:::decisionNode
+        B4{"Equity tick gap<br/>&gt; 5 min during<br/>market hours?"}:::decisionNode
+        B5{"Corporate action<br/>flag unrecognised<br/>on any position?"}:::decisionNode
+
+        H1["HALT signals<br/>for affected position<br/>(zero substitution prohibited)"]:::redNode
+        H2["FLAG to PM<br/>within 2 hours;<br/>escalate if &gt;4 hrs"]:::amberNode
+        H3["REJECT day<br/>for affected name;<br/>strategy does not run"]:::redNode
+        H4["HALT new signals;<br/>alert data eng<br/>within 1 minute"]:::redNode
+        H5["HALT re-hedging<br/>for name; alert PM<br/>within 30 seconds"]:::redNode
+
+        OK["All gates clear:<br/>is_tradeable = True<br/>Signal generation active"]:::greenNode
+
+        DQR --> B1
+        DQR --> B2
+        DQR --> B3
+        DQR --> B4
+        DQR --> B5
+
+        B1 -->|Yes — ZERO TOLERANCE| H1
+        B1 -->|No| OK
+        B2 -->|Yes| H2
+        B2 -->|No| OK
+        B3 -->|Yes| H3
+        B3 -->|No| OK
+        B4 -->|Yes| H4
+        B4 -->|No| OK
+        B5 -->|Yes| H5
+        B5 -->|No| OK
+    end
+
+    classDef greenNode fill:#E8F5E9,stroke:#4CAF50,color:#1B5E20,stroke-width:2px
+    classDef amberNode fill:#FFF8E1,stroke:#FF9800,color:#E65100,stroke-width:2px
+    classDef redNode fill:#FFEBEE,stroke:#F44336,color:#B71C1C,stroke-width:2px
+    classDef decisionNode fill:#F3F4F6,stroke:#6B7280,color:#374151,stroke-width:2px
+    </div>
+  </div>
+</div><!-- end data-eng -->
+
+
+<!-- ==================== QUANT DEV (Phase 3) ==================== -->
+<div class="chart-section" id="quant-dev">
+  <div class="section-header">
+    <h2>Quantitative Development <span class="team-badge qd">Phase 3</span></h2>
+    <p>Phase 3 builds the authoritative backtesting engine and performs historical validation. Requires Phase 1 specification and Phase 2 data pipeline both to be complete before starting. Engine architecture selection is Manual. Build and integration steps are Assisted. All execution steps (regime tests, P&L waterfall generation, gate evaluation) are Autonomous. Three Manual steps: architecture decision, root-cause analysis on any gate failure, and the mandatory PM + lead quant sign-off to proceed or return to Phase 1. If any performance gate fails, a written root-cause analysis document must be produced and approved before any model changes are made.</p>
+  </div>
+
+  <div class="legend">
+    <span class="legend-title">Legend:</span>
+    <div class="legend-item"><div class="legend-color green"></div>Autonomous</div>
+    <div class="legend-item"><div class="legend-color amber"></div>Assisted</div>
+    <div class="legend-item"><div class="legend-color red"></div>Manual</div>
+    <div class="legend-item"><div class="legend-color diamond"></div>Gate</div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Phase 3: Backtesting Engine &amp; Historical Simulation (12 steps — 5 Auto / 4 Asst / 3 Manual)</h3>
+    <div class="mermaid">
+graph TB
+    subgraph P3 ["Phase 3: Backtesting Engine &amp; Historical Simulation — Quant Dev — Weeks 3-5"]
+        direction TB
+
+        DEP1["Phase 1: Complete specification<br/>(Greeks engine, trigger logic,<br/>break-even model)"]:::amberNode
+        DEP2["Phase 2: Validated data pipeline<br/>(4yr archive, streaming &amp;<br/>batch serving layer ready)"]:::greenNode
+
+        S31["Step 3.1<br/>Design backtesting engine architecture<br/>(vectorised for sweeps;<br/>event-driven for final validation)"]:::redNode
+        D31{"Architecture sign-off:<br/>lead quant +<br/>head of technology?"}:::decisionNode
+        S32["Step 3.2<br/>Build vectorised simulation<br/>with full 6-component friction set<br/>(slippage, borrow, financing,<br/>commission, permanent &amp; temp impact)"]:::amberNode
+        S33["Step 3.3<br/>Validate each friction component<br/>individually against known benchmarks<br/>(Almgren-Chriss calibration for impact)"]:::greenNode
+        S34["Step 3.4<br/>Run preliminary parameter sweep<br/>on vectorised engine<br/>(broad search for initial orientation)"]:::greenNode
+        S35["Step 3.5<br/>Build event-driven engine<br/>(tick-by-tick replay;<br/>production reference engine)"]:::amberNode
+        S36["Step 3.6<br/>Integrate Greeks engine (Phase 1)<br/>&amp; data pipeline (Phase 2)<br/>into event-driven engine"]:::amberNode
+        S37["Step 3.7<br/>Run 4 mandatory regime period tests<br/>(2018 Q4; Mar 2020 COVID;<br/>2022 rate shock; 2024 high-vol)"]:::greenNode
+        S38["Step 3.8<br/>Generate daily P&amp;L waterfall<br/>with all 8 components<br/>(gross and net; residual monitored)"]:::greenNode
+        S39["Step 3.9<br/>Run live book audit<br/>(2022-2023; 50 manual re-hedge events;<br/>engine within 5 bp required)"]:::amberNode
+        S310["Step 3.10<br/>Evaluate all 4 decision gates<br/>(Sharpe, MDD, gamma capture,<br/>gamma P&amp;L regime coverage)"]:::greenNode
+        D310{"All 4 gates pass?<br/>(Sharpe ≥ 1.0; MDD ≤ 15%;<br/>3/4 regimes positive;<br/>audit within 5 bp)"}:::decisionNode
+        S311["Step 3.11<br/>Root-cause analysis<br/>for failed gate(s)<br/>(written document required)"]:::redNode
+        S312["Step 3.12<br/>PM + lead quant sign-off<br/>to proceed OR written authorisation<br/>to return to Phase 1"]:::redNode
+
+        DEP1 --> S31
+        DEP2 --> S31
+        S31 --> D31
+        D31 -->|Approved| S32
+        S32 --> S33
+        S33 --> S34
+        S34 --> S35
+        S35 --> S36
+        S36 --> S37
+        S37 --> S38
+        S38 --> S39
+        S39 --> S310
+        S310 --> D310
+        D310 -->|All Pass| S312
+        D310 -->|Any Fail| S311
+        S311 --> LOOP(["Return to Phase 1<br/>Root-cause document<br/>must precede all changes"]):::redNode
+        S312 --> OUT3(["Output: Validated Backtest Engine<br/>P&amp;L Waterfall (all regimes)<br/>Friction Attribution<br/>Live Book Audit Report"]):::greenNode
+    end
+
+    classDef greenNode fill:#E8F5E9,stroke:#4CAF50,color:#1B5E20,stroke-width:2px
+    classDef amberNode fill:#FFF8E1,stroke:#FF9800,color:#E65100,stroke-width:2px
+    classDef redNode fill:#FFEBEE,stroke:#F44336,color:#B71C1C,stroke-width:2px
+    classDef decisionNode fill:#F3F4F6,stroke:#6B7280,color:#374151,stroke-width:2px
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h3>P&amp;L Waterfall — 8-Component Attribution Flow</h3>
+    <div class="mermaid">
+graph LR
+    subgraph WATERFALL ["P&amp;L Waterfall — Daily Attribution (all components required; gross AND net reported)"]
+        direction TB
+
+        GR["Gross Gamma P&amp;L<br/>0.5 x Gamma x (dS)²<br/>per re-hedge event"]:::greenNode
+
+        C1["minus: Theta Drag<br/>(daily time decay<br/>on option position)"]:::amberNode
+        C2["minus: Slippage Cost<br/>(permanent + temporary impact;<br/>Almgren-Chriss 2001)"]:::amberNode
+        C3["minus: Borrow Cost<br/>(daily accrual on<br/>short equity hedge)"]:::amberNode
+        C4["minus: Financing Cost<br/>(daily accrual on<br/>long CB / warrant position)"]:::amberNode
+        C5["minus: Commission<br/>(per-share + min ticket;<br/>PB schedule)"]:::amberNode
+
+        DM["plus/minus: Delta Mismatch P&amp;L<br/>(residual delta exposure<br/>between re-hedge events)"]:::amberNode
+        RES["plus/minus: Residual<br/>(credit moves, vol drift,<br/>model error, corp actions)"]:::redNode
+
+        NET["NET P&amp;L<br/>(Sum of all components)"]:::greenNode
+
+        ALERT{"Residual<br/>&gt; 10 bp/day avg?"}:::decisionNode
+        INVEST(["INVESTIGATE<br/>Model error suspected<br/>Escalate to lead quant"]):::redNode
+
+        GR --> C1 --> C2 --> C3 --> C4 --> C5 --> DM --> RES --> NET
+        NET --> ALERT
+        ALERT -->|Yes| INVEST
+        ALERT -->|No| CLEAR(["Waterfall accepted<br/>PM sign-off"]):::greenNode
+    end
+
+    classDef greenNode fill:#E8F5E9,stroke:#4CAF50,color:#1B5E20,stroke-width:2px
+    classDef amberNode fill:#FFF8E1,stroke:#FF9800,color:#E65100,stroke-width:2px
+    classDef redNode fill:#FFEBEE,stroke:#F44336,color:#B71C1C,stroke-width:2px
+    classDef decisionNode fill:#F3F4F6,stroke:#6B7280,color:#374151,stroke-width:2px
+    </div>
+  </div>
+</div><!-- end quant-dev -->
+
+
+<!-- ==================== VALIDATION & RISK (Phase 5) ==================== -->
+<div class="chart-section" id="validation">
+  <div class="section-header">
+    <h2>Validation &amp; Risk <span class="team-badge vr">Phase 5</span></h2>
+    <p>Three-layer validation culminating in a mandatory IC/Risk Committee sign-off. Layer 1 (out-of-sample backtest) and Layer 2 (four Monte Carlo models) are almost entirely Autonomous — LLM agents can run all path generation, CVaR computation, kill-switch breach analysis, and slippage comparison end-to-end. Layer 3 (shadow OMS paper trading and IC package compilation) is Assisted. The single Manual step — Risk Committee formal written sign-off in a quorate committee meeting — is a hard gate that cannot be bypassed by any individual or automated process. Any layer failure requires a documented return loop before re-attempting paper trading.</p>
+  </div>
+
+  <div class="legend">
+    <span class="legend-title">Legend:</span>
+    <div class="legend-item"><div class="legend-color green"></div>Autonomous</div>
+    <div class="legend-item"><div class="legend-color amber"></div>Assisted</div>
+    <div class="legend-item"><div class="legend-color red"></div>Manual</div>
+    <div class="legend-item"><div class="legend-color diamond"></div>Gate</div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Phase 5 Layer 1 &amp; 2: OOS Backtest + Monte Carlo Stress Testing (10 steps — all Autonomous)</h3>
+    <div class="mermaid">
+graph TB
+    subgraph P5A ["Phase 5: Layers 1 &amp; 2 — Out-of-Sample Backtest + Monte Carlo — Multi-Team — Weeks 7-9"]
+        direction TB
+
+        DEP["Phase 4: Finalised parameter set<br/>(no further modification<br/>permitted after Phase 4 sign-off)"]:::greenNode
+
+        subgraph L1 ["Layer 1: Out-of-Sample Backtest"]
+            S51["Step 5.1<br/>Run event-driven engine on<br/>24M held-out period<br/>(no parameter adjustment permitted)"]:::greenNode
+            S52["Step 5.2<br/>Evaluate OOS Sharpe ratio<br/>vs in-sample benchmark<br/>(required: ≥ 0.8x in-sample Sharpe)"]:::greenNode
+            D52{"OOS Sharpe ≥ 0.8x<br/>in-sample?"}:::decisionNode
+            S51 --> S52 --> D52
+        end
+
+        subgraph L2 ["Layer 2: Monte Carlo Stress Test — 4 Models (All Autonomous)"]
+            direction LR
+            S53["Step 5.3<br/>GBM Baseline<br/>1,000 paths<br/>(σ = 2yr historical)"]:::greenNode
+            S54["Step 5.4<br/>Merton Jump-Diffusion<br/>1,000 paths<br/>(λ=2/yr; μJ=-8%; σJ=12%)"]:::greenNode
+            S55["Step 5.5<br/>Heston Stochastic Vol<br/>1,000 paths<br/>(κ=1.5; θ=0.04; ξ=0.3; ρ=-0.7)"]:::greenNode
+            S56["Step 5.6<br/>Credit Event Paths<br/>500 paths<br/>(CDS +500bp; CB -15 to -25%)"]:::greenNode
+        end
+
+        S57["Step 5.7<br/>Compute CVaR at 5th percentile<br/>for all 4 models<br/>(required: &lt; 3% NAV loss)"]:::greenNode
+        S58["Step 5.8<br/>Analyse kill-switch breach<br/>rates across paths<br/>(required: &lt; 15% per rule)"]:::greenNode
+        D58{"All models: CVaR &lt; 3% NAV?<br/>All rules: breach rate &lt; 15%?"}:::decisionNode
+
+        FAIL1(["Layer 1 FAIL<br/>Return to Phase 4<br/>Parameter revision required"]):::redNode
+        FAIL2(["Layer 2 FAIL<br/>Return to Phase 1<br/>Model / friction revision required"]):::redNode
+        PASS_L12(["Layers 1 &amp; 2 PASSED<br/>Proceed to Layer 3<br/>Paper Trading"]):::greenNode
+
+        DEP --> S51
+        DEP --> S53
+        DEP --> S54
+        DEP --> S55
+        DEP --> S56
+
+        D52 -->|Fail| FAIL1
+        D52 -->|Pass| PASS_L12
+
+        S53 --> S57
+        S54 --> S57
+        S55 --> S57
+        S56 --> S57
+        S57 --> S58
+        S58 --> D58
+        D58 -->|Fail| FAIL2
+        D58 -->|Pass| PASS_L12
+    end
+
+    classDef greenNode fill:#E8F5E9,stroke:#4CAF50,color:#1B5E20,stroke-width:2px
+    classDef amberNode fill:#FFF8E1,stroke:#FF9800,color:#E65100,stroke-width:2px
+    classDef redNode fill:#FFEBEE,stroke:#F44336,color:#B71C1C,stroke-width:2px
+    classDef decisionNode fill:#F3F4F6,stroke:#6B7280,color:#374151,stroke-width:2px
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Phase 5 Layer 3: Paper Trading + IC Gate (4 steps — 2 Auto / 1 Asst / 1 Manual)</h3>
+    <div class="mermaid">
+graph TB
+    subgraph P5B ["Phase 5: Layer 3 — Paper Trading &amp; IC Gate — Multi-Team — Weeks 9-11"]
+        direction TB
+
+        IN["Layers 1 &amp; 2 both passed<br/>OOS Sharpe and MC CVaR<br/>gates confirmed"]:::greenNode
+
+        S59["Step 5.9<br/>Set up shadow OMS<br/>for 90-day paper trading<br/>(real-time market data required;<br/>historical replay does not qualify)"]:::amberNode
+        S510["Step 5.10<br/>Run 90-day paper trading<br/>(all re-hedge signals routed<br/>through shadow OMS;<br/>fills recorded at signal timestamp)"]:::amberNode
+        S511["Step 5.11<br/>Monitor kill-switches<br/>throughout paper trading<br/>(all 8 rules active;<br/>any breach → halt + root-cause)"]:::greenNode
+        D511{"Any kill-switch<br/>breach during<br/>90-day period?"}:::decisionNode
+        S512["Step 5.12<br/>Compute slippage ratio<br/>(actual bid-ask at signal time<br/>vs modelled; required: ≤ 1.3x)"]:::greenNode
+        D512{"Slippage ratio<br/>≤ 1.3x modelled<br/>over full 90 days?"}:::decisionNode
+        S513["Step 5.13<br/>Compile IC Approval Package<br/>(all backtest metrics; MC results;<br/>paper trading data; kill-switch log)"]:::amberNode
+        S514["Step 5.14<br/>Risk Committee formal review<br/>&amp; written sign-off<br/>(quorate meeting required —<br/>email or single-person sign-off invalid)"]:::redNode
+
+        BREACH(["BREACH — Root-cause analysis<br/>Return to Phase 4<br/>before re-running paper trading"]):::redNode
+        SLIP_FAIL(["SLIP FAIL — Investigate<br/>execution model<br/>Return to Phase 1 friction model"]):::redNode
+        IC_REJECT(["NOT APPROVED — Address<br/>committee feedback<br/>Return to Phase 4 or 5"]):::redNode
+        APPROVED(["IC APPROVED<br/>Proceed to Phase 6<br/>Live Deployment"]):::greenNode
+
+        IN --> S59
+        S59 --> S510
+        S510 --> S511
+        S511 --> D511
+        D511 -->|Yes — BREACH| BREACH
+        D511 -->|No Breaches| S512
+        S512 --> D512
+        D512 -->|Fail| SLIP_FAIL
+        D512 -->|Pass| S513
+        S513 --> S514
+        S514 -->|Approved| APPROVED
+        S514 -->|Not Approved| IC_REJECT
+    end
+
+    classDef greenNode fill:#E8F5E9,stroke:#4CAF50,color:#1B5E20,stroke-width:2px
+    classDef amberNode fill:#FFF8E1,stroke:#FF9800,color:#E65100,stroke-width:2px
+    classDef redNode fill:#FFEBEE,stroke:#F44336,color:#B71C1C,stroke-width:2px
+    classDef decisionNode fill:#F3F4F6,stroke:#6B7280,color:#374151,stroke-width:2px
+    </div>
+  </div>
+</div><!-- end validation -->
+
+
+<!-- ==================== LIVE OPS (Phase 6) ==================== -->
+<div class="chart-section" id="live-ops">
+  <div class="section-header">
+    <h2>Live Ops &amp; Governance <span class="team-badge lo">Phase 6</span></h2>
+    <p>Most human-intensive phase in steady-state operations. Dashboard activation and kill-switch hard-coding are Assisted/Autonomous. All four phased rollout gates and all ongoing governance activities (daily P&L, weekly slippage review, monthly Greeks benchmark, quarterly parameter review) are Assisted — LLM agents can produce reports and flag anomalies, but human sign-off is required on each. Four Manual steps are absolute: Days 1-2 PM signal approval, kill-switch event response and restart, quarterly Risk Committee threshold review, and the annual independent strategy audit. Kill-switch rules and thresholds are immutable without written Risk Committee approval.</p>
+  </div>
+
+  <div class="legend">
+    <span class="legend-title">Legend:</span>
+    <div class="legend-item"><div class="legend-color green"></div>Autonomous</div>
+    <div class="legend-item"><div class="legend-color amber"></div>Assisted</div>
+    <div class="legend-item"><div class="legend-color red"></div>Manual</div>
+    <div class="legend-item"><div class="legend-color diamond"></div>Gate</div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Phase 6A: Phased Capital Rollout (7 steps — 2 Auto / 2 Asst / 3 Manual initially)</h3>
+    <div class="mermaid">
+graph TB
+    subgraph P6A ["Phase 6: Phased Capital Rollout — Multi-Team — Weeks 11-15"]
+        direction TB
+
+        IN["IC / Risk Committee approval<br/>received in writing<br/>Proceed to live deployment"]:::greenNode
+
+        S61["Step 6.1<br/>Activate monitoring dashboard<br/>&amp; alert routing<br/>(Grafana / Prometheus or equivalent)"]:::amberNode
+        S62["Step 6.2<br/>Hard-code &amp; activate<br/>all 8 kill-switch rules<br/>(no trader configuration permitted)"]:::greenNode
+
+        subgraph ROLLOUT ["Phased Capital Rollout — Sequential Scale-Up"]
+            direction TB
+            S63["Step 6.3<br/>Days 1-2: 10% notional<br/>PM reviews &amp; approves<br/>EVERY re-hedge signal manually"]:::redNode
+            D63{"Execution quality<br/>acceptable after<br/>Days 1-2?"}:::decisionNode
+            S64["Step 6.4<br/>Days 3-5: 25% notional<br/>Automated with PM alert<br/>on each trade"]:::amberNode
+            D64{"Slippage ratio<br/>and kill-switch<br/>status OK?"}:::decisionNode
+            S65["Step 6.5<br/>Days 6-10: 50% notional<br/>Automated with<br/>daily PM review"]:::amberNode
+            D65{"10-day execution<br/>quality review<br/>passed?"}:::decisionNode
+            S66["Step 6.6<br/>Day 11+: 100% notional<br/>Fully automated<br/>real-time dashboard only"]:::greenNode
+            S63 --> D63
+            D63 -->|Pass| S64
+            D63 -->|Fail| PAUSE3(["Pause — investigate<br/>execution quality<br/>PM decision required"]):::redNode
+            S64 --> D64
+            D64 -->|Pass| S65
+            D64 -->|Fail| PAUSE4(["Pause — investigate<br/>slippage or kill-switch<br/>PM decision required"]):::redNode
+            S65 --> D65
+            D65 -->|Pass| S66
+            D65 -->|Fail| PAUSE5(["Pause — daily<br/>review triggered<br/>PM decision required"]):::redNode
+        end
+
+        IN --> S61
+        S61 --> S62
+        S62 --> S63
+        S66 --> LIVE(["STRATEGY FULLY LIVE<br/>100% Notional<br/>Continuous Monitoring Active"]):::greenNode
+    end
+
+    classDef greenNode fill:#E8F5E9,stroke:#4CAF50,color:#1B5E20,stroke-width:2px
+    classDef amberNode fill:#FFF8E1,stroke:#FF9800,color:#E65100,stroke-width:2px
+    classDef redNode fill:#FFEBEE,stroke:#F44336,color:#B71C1C,stroke-width:2px
+    classDef decisionNode fill:#F3F4F6,stroke:#6B7280,color:#374151,stroke-width:2px
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Phase 6B: Kill-Switch Logic — 8 Rules (All Hard-Coded, Immutable)</h3>
+    <div class="mermaid">
+graph LR
+    subgraph KS ["Kill-Switch Rules — Real-Time Monitoring — All Rules Active at All Times"]
+        direction TB
+
+        MON["Real-Time<br/>Monitoring Engine"]:::greenNode
+
+        KS1{"Daily gamma P&amp;L<br/>&lt; -40 bp on<br/>any position?"}:::decisionNode
+        KS2{"5-day slippage<br/>ratio &gt; 1.5x<br/>modelled?"}:::decisionNode
+        KS3{"Portfolio delta<br/>&gt; 2% fund NAV<br/>either direction?"}:::decisionNode
+        KS4{"PB borrow recall<br/>&gt; 20% of<br/>aggregate short?"}:::decisionNode
+        KS5{"Data feed absent<br/>&gt; 5 min during<br/>market hours?"}:::decisionNode
+        KS6{"Unrecognised corp<br/>action flag on<br/>any position?"}:::decisionNode
+        KS7{"Daily P&amp;L &lt; -1.5x<br/>expected daily<br/>theta drag?"}:::decisionNode
+        KS8{"Borrow rate exceeds<br/>approved cap<br/>for any position?"}:::decisionNode
+
+        A1["Pause signals<br/>for position<br/>Alert PM in 2 min"]:::redNode
+        A2["Pause new positions<br/>Complete in-flight<br/>trades only"]:::redNode
+        A3["AUTO-FLAT to<br/>delta-neutral<br/>VWAP over 30 min"]:::redNode
+        A4["Reduce short<br/>to 50% within<br/>one session"]:::redNode
+        A5["Halt all new<br/>signals immediately<br/>Alert within 1 min"]:::redNode
+        A6["Halt re-hedging<br/>for name<br/>Alert PM in 30s"]:::redNode
+        A7["Pause all signals<br/>PM manual<br/>restart required"]:::redNode
+        A8["Halt new signals<br/>Begin orderly<br/>position reduction"]:::redNode
+
+        MON --> KS1 --> A1
+        MON --> KS2 --> A2
+        MON --> KS3 --> A3
+        MON --> KS4 --> A4
+        MON --> KS5 --> A5
+        MON --> KS6 --> A6
+        MON --> KS7 --> A7
+        MON --> KS8 --> A8
+    end
+
+    classDef greenNode fill:#E8F5E9,stroke:#4CAF50,color:#1B5E20,stroke-width:2px
+    classDef amberNode fill:#FFF8E1,stroke:#FF9800,color:#E65100,stroke-width:2px
+    classDef redNode fill:#FFEBEE,stroke:#F44336,color:#B71C1C,stroke-width:2px
+    classDef decisionNode fill:#F3F4F6,stroke:#6B7280,color:#374151,stroke-width:2px
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Phase 6C: Ongoing Governance Loop (6 steps — 0 Auto / 5 Asst / 1 Manual cycle)</h3>
+    <div class="mermaid">
+graph TB
+    subgraph P6C ["Phase 6: Ongoing Governance — Continuous from Day 1 of Live Operation"]
+        direction TB
+
+        S67["Step 6.7<br/>Daily P&amp;L attribution sign-off<br/>(all 8 waterfall components;<br/>PM signature required)"]:::amberNode
+        S68["Step 6.8<br/>Weekly execution quality review<br/>(slippage ratio vs model;<br/>&gt;1.2x for 10+ days → recalibrate)"]:::amberNode
+        S69["Step 6.9<br/>Monthly Greeks benchmark<br/>(CB portfolio vs BVAL;<br/>error &gt;0.1% → investigate)"]:::amberNode
+        S610["Step 6.10<br/>Quarterly parameter stability<br/>(rolling 12M walk-forward re-run;<br/>OOS degradation &gt;25% → Phase 4)"]:::amberNode
+        S611["Step 6.11<br/>Quarterly kill-switch threshold review<br/>(Risk Committee; all 8 rules;<br/>any change requires written approval)"]:::redNode
+        S612["Step 6.12<br/>Kill-switch event response<br/>&amp; PM manual restart<br/>(automated restart explicitly prohibited)"]:::redNode
+        S613["Step 6.13<br/>Annual strategy audit<br/>(independent reviewer required;<br/>full access to all documentation &amp; systems)"]:::redNode
+
+        D610{"OOS degradation<br/>&gt; 25% on<br/>quarterly re-run?"}:::decisionNode
+        D612{"Kill-switch<br/>event fired?"}:::decisionNode
+
+        S67 --> S68 --> S69 --> S610
+        S610 --> D610
+        D610 -->|Yes| REPHASE4(["Trigger Phase 4<br/>re-optimisation<br/>Full walk-forward required"]):::amberNode
+        D610 -->|No| S611
+        S611 --> S613
+
+        S612 --> D612
+        D612 -->|Yes| RESTART(["PM investigates &amp; manually<br/>restarts (or keeps paused)<br/>Written log entry required"]):::redNode
+        D612 -->|No active| MONITOR(["Continuous real-time<br/>monitoring via dashboard"]):::greenNode
+
+        MONITOR --> S612
+    end
+
+    classDef greenNode fill:#E8F5E9,stroke:#4CAF50,color:#1B5E20,stroke-width:2px
+    classDef amberNode fill:#FFF8E1,stroke:#FF9800,color:#E65100,stroke-width:2px
+    classDef redNode fill:#FFEBEE,stroke:#F44336,color:#B71C1C,stroke-width:2px
+    classDef decisionNode fill:#F3F4F6,stroke:#6B7280,color:#374151,stroke-width:2px
+    </div>
+  </div>
+</div><!-- end live-ops -->
+
+
+<!-- ==================== CAPABILITY SUMMARY ==================== -->
+<div class="chart-section" id="summary">
+  <div class="section-header">
+    <h2>Full Step Capability Summary — All 74 Steps</h2>
+    <p>Complete listing of all 74 steps across 6 phases, with team ownership and LLM capability classification. Autonomous = LLM can execute end-to-end without human intervention. Assisted = LLM generates, analyses or drafts output, human reviews and approves. Manual = human judgment or authority required; LLM plays no primary role in execution of the step itself.</p>
+  </div>
+
+  <div class="info-grid">
+    <div class="info-box green-stat">
+      <h4>Phase 2: Data Engineering</h4>
+      <div class="value">62% Autonomous</div>
+      <div class="detail">8 of 13 steps fully automatable — highest automation rate across all phases</div>
+    </div>
+    <div class="info-box green-stat">
+      <h4>Phase 4: Optimisation</h4>
+      <div class="value">70% Autonomous</div>
+      <div class="detail">7 of 10 steps autonomous — second highest; all quantitative validation steps fully automatable</div>
+    </div>
+    <div class="info-box green-stat">
+      <h4>Phase 5: Validation</h4>
+      <div class="value">71% Autonomous</div>
+      <div class="detail">10 of 14 steps autonomous — MC path generation and CVaR fully LLM-executable</div>
+    </div>
+    <div class="info-box red-stat">
+      <h4>Phase 6: Live Ops</h4>
+      <div class="value">31% Manual</div>
+      <div class="detail">4 of 13 steps require human authority — highest manual rate; kill-switch governance immutable</div>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <table class="summary-table">
+      <thead>
+        <tr><th>Step</th><th>Description</th><th>Team</th><th>LLM Level</th></tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="4" class="phase-divider">PHASE 1 — Research &amp; Mathematical Model Development (Weeks 1-3)</td></tr>
+        <tr><td>1.1</td><td>Assemble all analytical inputs (vol surface, CDS curve, borrow rates, dividend calendar, term sheets)</td><td>Quant Research</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>1.2</td><td>Select pricing model architecture (Binomial / PDE / Monte Carlo) — document rationale explicitly</td><td>Quant Research</td><td class="llm-red">Manual</td></tr>
+        <tr><td>1.3</td><td>Derive full Greeks engine specification (delta, gamma, vega, theta, charm, rho) — full algebraic derivation</td><td>Quant Research</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>1.4</td><td>Greeks self-consistency validation (put-call parity within 0.1%; delta in [0,1]; gamma &gt; 0; theta &lt; 0)</td><td>Quant Research</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>1.5</td><td>BVAL benchmark validation — 50 bonds, 3 credit tiers, pricing error &lt; 0.05% required</td><td>Quant Research</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>1.6</td><td>Specify delta-band trigger logic with regime-adaptive multipliers (band: 1.5–8.0%; multiplier: 1.0–2.5x)</td><td>Quant Research</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>1.7</td><td>Specify gamma P&amp;L trigger logic (carry-relative threshold: 0.08–0.35% of position; relative to daily theta)</td><td>Quant Research</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>1.8</td><td>Specify time-based trigger and hybrid combination rules (interval: 5–120 min; cooldown logic)</td><td>Quant Research</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>1.9</td><td>Derive carry break-even model (BE vol = sqrt(2 x theta/gamma x S²); itemised by all friction components)</td><td>Quant Research</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>1.10</td><td>Validate break-even formula vs 3 live book re-hedge sequences (within 1 vol point required)</td><td>Quant Research</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>1.11</td><td>Document instrument reusability mapping (CB / warrant / equity option / variance swap — per component)</td><td>Quant Research</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>1.12</td><td>Lead quant sign-off on complete Phase 1 specification package — written approval required</td><td>Quant Research</td><td class="llm-red">Manual</td></tr>
+        <tr><td colspan="4" class="phase-divider">PHASE 2 — Data Pipeline Construction (Weeks 2-3, Parallel)</td></tr>
+        <tr><td>2.1</td><td>Procure vendor contracts and prime broker data agreements (Bloomberg, exchange feeds, PB SFT)</td><td>Data Engineering</td><td class="llm-red">Manual</td></tr>
+        <tr><td>2.2</td><td>Build equity tick data ingestion layer (FIX / exchange feed; gap &gt;15 min halts signals)</td><td>Data Engineering</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>2.3</td><td>Build CB marks ingestion (BVAL + PB reconciliation; discrepancy &gt;1pt triggers manual review)</td><td>Data Engineering</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>2.4</td><td>Build implied vol surface ingestion (5 expiries x 7 strikes; SVI interpolation for missing strikes)</td><td>Data Engineering</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>2.5</td><td>Build borrow rate ingestion — PB SFT term structure; ZERO TOLERANCE for missing data</td><td>Data Engineering</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>2.6</td><td>Build dividend and corporate action event ingestion (real-time event stream; PM alert within 30 sec)</td><td>Data Engineering</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>2.7</td><td>Build CDS spread ingestion (1Y / 3Y / 5Y per issuer; daily close; bond-implied fallback with flag)</td><td>Data Engineering</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>2.8</td><td>Implement staleness and gap detection logic (CB unchanged &gt;2hrs → flag; vol &lt;3 expiries → reject day)</td><td>Data Engineering</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>2.9</td><td>Build DataQualityReport generation (daily; all required fields; is_tradeable bool; halt_reason string)</td><td>Data Engineering</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>2.10</td><td>Build unified serving layer (batch API for backtest; streaming API for live engine)</td><td>Data Engineering</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>2.11</td><td>Run historical completeness audit (4 years continuous; max 5-day gap per source across all names)</td><td>Data Engineering</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>2.12</td><td>Integration test: serve data snapshot to Phase 3 backtest engine; verify timestamp alignment ≤60 sec</td><td>Data Engineering</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>2.13</td><td>Data engineering lead sign-off on complete pipeline — written approval before Phase 3 can begin</td><td>Data Engineering</td><td class="llm-red">Manual</td></tr>
+        <tr><td colspan="4" class="phase-divider">PHASE 3 — Backtesting Engine &amp; Historical Simulation (Weeks 3-5)</td></tr>
+        <tr><td>3.1</td><td>Design backtesting engine architecture (vectorised for sweeps; event-driven for final validation)</td><td>Quant Dev</td><td class="llm-red">Manual</td></tr>
+        <tr><td>3.2</td><td>Build vectorised simulation with full 6-component friction set (slippage, borrow, financing, commission, impact)</td><td>Quant Dev</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>3.3</td><td>Validate each friction component individually against known benchmarks (Almgren-Chriss calibration)</td><td>Quant Dev</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>3.4</td><td>Run preliminary parameter sweep on vectorised engine (broad search, initial orientation)</td><td>Quant Dev</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>3.5</td><td>Build event-driven engine (tick-by-tick replay; production reference engine for all final results)</td><td>Quant Dev</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>3.6</td><td>Integrate Greeks engine (Phase 1 spec) and data pipeline (Phase 2) into event-driven engine</td><td>Quant Dev</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>3.7</td><td>Run 4 mandatory regime period tests (2018 Q4; Mar 2020 COVID; 2022 rate shock; 2024 high-vol)</td><td>Quant Dev</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>3.8</td><td>Generate daily P&amp;L waterfall with all 8 components (gross and net; residual monitored vs 10bp threshold)</td><td>Quant Dev</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>3.9</td><td>Run live book audit (2022-2023; 50 manually verified re-hedge events; engine within 5 bp required)</td><td>Quant Dev</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>3.10</td><td>Evaluate all 4 decision gates (Sharpe ≥1.0; MDD ≤15%; gamma P&amp;L 3/4 regimes; audit within 5bp)</td><td>Quant Dev</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>3.11</td><td>Root-cause analysis document for failed gate(s) — written doc required before any model changes</td><td>Quant Dev</td><td class="llm-red">Manual</td></tr>
+        <tr><td>3.12</td><td>PM + lead quant joint sign-off to proceed to Phase 4 OR written authorisation to return to Phase 1</td><td>PM / Risk</td><td class="llm-red">Manual</td></tr>
+        <tr><td colspan="4" class="phase-divider">PHASE 4 — Optimisation &amp; Overfitting Prevention (Weeks 5-7)</td></tr>
+        <tr><td>4.1</td><td>Define hyperparameter search space (7 parameters with ranges, steps, and documented rationale)</td><td>Quant Research</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>4.2</td><td>Run full vectorised parameter sweep across all 7 dimensions using Phase 3 engine</td><td>Quant Research</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>4.3</td><td>Bootstrap filter: reject all sets with &lt;90% net-profitable resamples across 500 bootstrap samples</td><td>Quant Research</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>4.4</td><td>Walk-forward validation (8+ windows; 12M train / 6M test; no parameter leakage permitted)</td><td>Quant Research</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>4.5</td><td>Compute Sharpe coefficient of variation across all walk-forward test windows (CV &lt;30% required)</td><td>Quant Research</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>4.6</td><td>Compute OOS Sharpe degradation vs in-sample average (&lt;30% degradation required)</td><td>Quant Research</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>4.7</td><td>Generate sensitivity heatmaps (2D: delta_band vs gamma_threshold; confirm flat region evidence)</td><td>Quant Research</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>4.8</td><td>Build and validate regime detection module (vol / trend / borrow / credit; 4 dimensions, 3-state each)</td><td>Quant Research</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>4.9</td><td>Validate regime classifier accuracy (≥80% daily accuracy on all 4 mandatory historical periods)</td><td>Quant Research</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>4.10</td><td>PM + lead quant joint review and selection of final parameter set (heatmap evidence required)</td><td>PM / Quant</td><td class="llm-red">Manual</td></tr>
+        <tr><td colspan="4" class="phase-divider">PHASE 5 — Validation, Stress Testing &amp; Paper Trading (Weeks 7-11)</td></tr>
+        <tr><td>5.1</td><td>Run event-driven engine on 24M held-out OOS period (no parameter adjustment permitted post Phase 4)</td><td>Multi-Team</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>5.2</td><td>Evaluate OOS Sharpe ratio vs in-sample benchmark (required: ≥0.8x in-sample; degradation &lt;20%)</td><td>Multi-Team</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>5.3</td><td>Generate GBM baseline Monte Carlo paths (1,000 minimum; σ calibrated to 2yr historical)</td><td>Multi-Team</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>5.4</td><td>Generate Merton jump-diffusion Monte Carlo paths (1,000 min; λ=2/yr; μJ=-8%; σJ=12%)</td><td>Multi-Team</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>5.5</td><td>Generate Heston stochastic vol Monte Carlo paths (1,000 min; κ=1.5; θ=0.04; ξ=0.3; ρ=-0.7)</td><td>Multi-Team</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>5.6</td><td>Generate credit event Monte Carlo paths (500 min; CDS +500bp; CB price -15% to -25%)</td><td>Multi-Team</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>5.7</td><td>Compute CVaR at 5th percentile for all 4 models (required: &lt;3% NAV loss across all four)</td><td>Multi-Team</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>5.8</td><td>Analyse kill-switch breach rates across Monte Carlo paths (required: &lt;15% per individual rule)</td><td>Multi-Team</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>5.9</td><td>Set up shadow OMS for 90-day paper trading (real-time data required; historical replay not acceptable)</td><td>Execution</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>5.10</td><td>Run 90-day paper trading (all signals through shadow OMS; fills at signal-time bid-ask)</td><td>Execution</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>5.11</td><td>Monitor all 8 kill-switches throughout paper trading (any breach → halt and root-cause required)</td><td>Execution</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>5.12</td><td>Compute slippage ratio (actual bid-ask at signal vs modelled; required: ≤1.3x over full 90 days)</td><td>Execution</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>5.13</td><td>Compile IC Approval Package (all metrics, MC results, paper trading data, kill-switch log, structured format)</td><td>PM / Quant</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>5.14</td><td>Risk Committee formal review and written sign-off (quorate meeting required — email sign-off invalid)</td><td>IC / Risk</td><td class="llm-red">Manual</td></tr>
+        <tr><td colspan="4" class="phase-divider">PHASE 6 — Live Deployment &amp; Ongoing Governance (Weeks 11+)</td></tr>
+        <tr><td>6.1</td><td>Activate monitoring dashboard and alert routing (real-time delta, gamma P&amp;L, slippage, data feed health)</td><td>Live Ops</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>6.2</td><td>Hard-code and activate all 8 kill-switch rules (no trader configuration; Risk Committee approval for changes)</td><td>Live Ops</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>6.3</td><td>Days 1-2: 10% notional — PM reviews and approves every re-hedge signal before execution</td><td>PM</td><td class="llm-red">Manual</td></tr>
+        <tr><td>6.4</td><td>Days 3-5: 25% notional — automated with PM alert on each trade; PM review within 30 min</td><td>PM / Trading</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>6.5</td><td>Days 6-10: 50% notional — automated with daily PM review of prior-day execution quality report</td><td>PM / Trading</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>6.6</td><td>Day 11+: 100% notional — fully automated; real-time dashboard monitoring only</td><td>Live Ops</td><td class="llm-green">Autonomous</td></tr>
+        <tr><td>6.7</td><td>Daily P&amp;L attribution review and PM sign-off (all 8 waterfall components; unexplained residual &gt;25bp flagged)</td><td>PM / Risk</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>6.8</td><td>Weekly execution quality and slippage review (&gt;1.2x ratio for 10+ consecutive days triggers recalibration)</td><td>Trading / Quant</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>6.9</td><td>Monthly Greeks engine benchmark validation (portfolio vs BVAL; error &gt;0.1% on any position → investigate)</td><td>Quant Research</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>6.10</td><td>Quarterly parameter stability re-run (rolling 12M walk-forward; OOS degradation &gt;25% triggers Phase 4)</td><td>Quant Research</td><td class="llm-amber">Assisted</td></tr>
+        <tr><td>6.11</td><td>Quarterly kill-switch threshold review (Risk Committee; all 8 rules; any change requires written approval)</td><td>Risk Committee</td><td class="llm-red">Manual</td></tr>
+        <tr><td>6.12</td><td>Kill-switch event response and PM manual restart (automated restart explicitly prohibited at all times)</td><td>PM</td><td class="llm-red">Manual</td></tr>
+        <tr><td>6.13</td><td>Annual strategy audit (independent reviewer required; full system access; findings to Risk Committee)</td><td>IC / Risk</td><td class="llm-red">Manual</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div><!-- end summary -->
+
+</div><!-- end content -->
+
+<div class="footer">
+  <p>Gamma Re-Hedging Algo Strategy Workflow Charts v1.0 — Aligned with Workflow Build Guide v1, CB Arbitrage Fund &middot; February 2026</p>
+  <p>Autonomous 47% (35 steps) &middot; Assisted 35% (26 steps) &middot; Manual 18% (13 steps) &middot; 74 steps total &middot; 6 Phases &middot; 6 Teams &middot; 10 Decision Gates &middot; 5 Feedback Loops</p>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    themeVariables: {
+      primaryColor: '#E8F5E9',
+      primaryTextColor: '#1B5E20',
+      primaryBorderColor: '#4CAF50',
+      lineColor: '#64748B',
+      secondaryColor: '#F1F5F9',
+      tertiaryColor: '#F8FAFC',
+      fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
+      fontSize: '13px',
+      nodeBorder: '2px',
+    },
+    flowchart: {
+      useMaxWidth: true,
+      htmlLabels: true,
+      curve: 'basis',
+      rankSpacing: 50,
+      nodeSpacing: 30,
+      padding: 15,
+    },
+  });
+
+  function showTab(tabId, event) {
+    document.querySelectorAll('.chart-section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    if (event && event.currentTarget) event.currentTarget.classList.add('active');
+    renderMermaid(tabId);
+  }
+
+  const renderedTabs = new Set();
+
+  async function renderMermaid(tabId) {
+    if (renderedTabs.has(tabId)) return;
+    renderedTabs.add(tabId);
+
+    const section = document.getElementById(tabId);
+    const charts = section.querySelectorAll('.mermaid');
+
+    for (const chart of charts) {
+      if (chart.getAttribute('data-processed')) continue;
+      const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
+      try {
+        const { svg } = await mermaid.render(id, chart.textContent.trim());
+        chart.innerHTML = svg;
+        chart.setAttribute('data-processed', 'true');
+      } catch (e) {
+        console.error('Mermaid render error in ' + tabId + ':', e);
+        chart.innerHTML = '<p style="color:red;padding:1rem;">Chart rendering error — check browser console for details.</p>';
+      }
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    renderMermaid('overall');
+  });
+</script>
+
+</body>
+</html>
